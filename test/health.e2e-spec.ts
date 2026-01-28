@@ -20,6 +20,7 @@ describe('Health (e2e)', () => {
   });
 
   it('GET /api/health -> 200 when DB is reachable', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     await request(app.getHttpServer()).get('/api/health').expect(200);
   });
 });
