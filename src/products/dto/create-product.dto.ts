@@ -6,7 +6,7 @@ import {
   IsString,
   Length,
   Min,
-} from "class-validator";
+} from 'class-validator';
 
 export class CreateProductDto {
   @IsString()
@@ -36,6 +36,6 @@ export class CreateProductDto {
   stock: number;
 
   @IsOptional()
-  @IsIn(["active", "inactive"])
-  status?: "active" | "inactive";
+  @IsIn(['active', 'inactive'])
+  status?: 'active' | 'inactive';
 }

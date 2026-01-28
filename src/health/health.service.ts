@@ -16,6 +16,7 @@ export class HealthService {
         timestamp: new Date().toISOString(),
       };
     } catch (err) {
+      console.error(err);
       // Si falla la DB, el health debe reflejarlo (útil para CI y deploy)
       throw new ServiceUnavailableException({
         status: 'error',
