@@ -12,9 +12,10 @@ import { HealthModule } from './health/health.module';
       isGlobal: true,
       envFilePath: ['.env', '.env.local'],
     }),
-    PrismaModule, 
-    ProductsModule, 
-    HealthModule],
+    PrismaModule,
+    ProductsModule,
+    HealthModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
