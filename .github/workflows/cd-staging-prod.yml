@@ -1,0 +1,96 @@
+name: CD Staging + Production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+jobs:
+  deploy_staging:
+    name: Deploy STAGING
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set release id
+        run: echo "RELEASE_ID=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
+
+      - name: Deploy STAGING (releases + symlink)
+        run: |
+          set -euo pipefail
+          BASE="/var/www/productos-staging"
+          REL="$BASE/releases/${RELEASE_ID}"
+
+          mkdir -p "$REL"
+          rsync -av --delete \
+            --exclude .git \
+            --exclude node_modules \
+            --exclude dist \
+            ./ "$REL/"
+
+          ln -sfn "$BASE/shared/.env" "$REL/.env"
+
+          cd "$REL"
+          npm ci
+          npm run build
+          npx prisma migrate deploy
+
+          ln -sfn "$REL" "$BASE/current"
+          echo "STAGING current -> $(readlink -f $BASE/current)"
+
+          cd "$BASE/current"
+          pm2 start dist/src/main.js --name productos-staging --time --update-env || true
+          pm2 restart productos-staging --update-env
+          pm2 save
+
+      - name: Health check STAGING
+        run: curl -f http://localhost:3001/api/health
+
+  deploy_production:
+    name: Deploy PRODUCTION
+    needs: deploy_staging
+    runs-on: self-hosted
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set release id
+        run: echo "RELEASE_ID=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
+
+      - name: Deploy PRODUCTION (releases + symlink)
+        run: |
+          set -euo pipefail
+          BASE="/var/www/productos-prod"
+          REL="$BASE/releases/${RELEASE_ID}"
+
+          mkdir -p "$REL"
+          rsync -av --delete \
+            --exclude .git \
+            --exclude node_modules \
+            --exclude dist \
+            ./ "$REL/"
+
+          ln -sfn "$BASE/shared/.env" "$REL/.env"
+
+          cd "$REL"
+          npm ci
+          npm run build
+          npx prisma migrate deploy
+
+          ln -sfn "$REL" "$BASE/current"
+          echo "PROD current -> $(readlink -f $BASE/current)"
+
+          cd "$BASE/current"
+          pm2 start dist/src/main.js --name productos-prod --time --update-env || true
+          pm2 restart productos-prod --update-env
+          pm2 save
+
+      - name: Health check PRODUCTION
+        run: curl -f http://localhost:3002/api/health
