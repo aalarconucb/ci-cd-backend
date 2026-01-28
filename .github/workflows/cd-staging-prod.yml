@@ -48,6 +48,7 @@ jobs:
           pm2 start dist/src/main.js --name productos-staging --time --update-env || true
           pm2 restart productos-staging --update-env
           pm2 save
+          pm2 status
 
       - name: Health check STAGING
         run: curl -f http://localhost:3001/api/health
@@ -91,6 +92,19 @@ jobs:
           pm2 start dist/src/main.js --name productos-prod --time --update-env || true
           pm2 restart productos-prod --update-env
           pm2 save
+          pm2 status
 
       - name: Health check PRODUCTION
-        run: curl -f http://localhost:3002/api/health
+        run: |
+            for i in {1..20}; do
+                if curl -fsS http://localhost:3001/api/health > /dev/null; then
+                echo "STAGING health OK"
+                exit 0
+                fi
+                echo "Waiting for STAGING... ($i/20)"
+                sleep 2
+            done
+            echo "STAGING health FAILED"
+            pm2 status || true
+            pm2 logs productos-staging --lines 50 || true
+            exit 1
