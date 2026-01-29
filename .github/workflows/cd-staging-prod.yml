@@ -18,16 +18,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Load NVM (Node 20) + PM2
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          nvm use 20
+          node -v
+          npm -v
+          pm2 -v
+
       - name: Set release id
         run: echo "RELEASE_ID=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
 
       - name: Deploy STAGING (releases + symlink)
+        shell: bash
         run: |
           set -euo pipefail
           BASE="/var/www/productos-staging"
           REL="$BASE/releases/${RELEASE_ID}"
 
+          echo "Deploying STAGING release: $REL"
           mkdir -p "$REL"
+
           rsync -av --delete \
             --exclude .git \
             --exclude node_modules \
@@ -48,10 +62,26 @@ jobs:
           pm2 start dist/src/main.js --name productos-staging --time --update-env || true
           pm2 restart productos-staging --update-env
           pm2 save
-          pm2 status
 
-      - name: Health check STAGING
-        run: curl -f http://localhost:3001/api/health
+          pm2 status
+          pm2 describe productos-staging || true
+
+      - name: Health check STAGING (retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..20}; do
+            if curl -fsS http://localhost:3001/api/health > /dev/null; then
+              echo "STAGING health OK"
+              exit 0
+            fi
+            echo "Waiting for STAGING... ($i/20)"
+            sleep 2
+          done
+          echo "STAGING health FAILED"
+          pm2 status || true
+          pm2 logs productos-staging --lines 80 || true
+          exit 1
 
   deploy_production:
     name: Deploy PRODUCTION
@@ -62,16 +92,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Load NVM (Node 20) + PM2
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          nvm use 20
+          node -v
+          npm -v
+          pm2 -v
+
       - name: Set release id
         run: echo "RELEASE_ID=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
 
       - name: Deploy PRODUCTION (releases + symlink)
+        shell: bash
         run: |
           set -euo pipefail
           BASE="/var/www/productos-prod"
           REL="$BASE/releases/${RELEASE_ID}"
 
+          echo "Deploying PRODUCTION release: $REL"
           mkdir -p "$REL"
+
           rsync -av --delete \
             --exclude .git \
             --exclude node_modules \
@@ -86,40 +130,29 @@ jobs:
           npx prisma migrate deploy
 
           ln -sfn "$REL" "$BASE/current"
-          echo "PROD current -> $(readlink -f $BASE/current)"
+          echo "PRODUCTION current -> $(readlink -f $BASE/current)"
 
           cd "$BASE/current"
           pm2 start dist/src/main.js --name productos-prod --time --update-env || true
           pm2 restart productos-prod --update-env
           pm2 save
-          pm2 status
 
-      - name: Health check STAGING (retry)
-        run: |
-            for i in {1..20}; do
-                if curl -fsS http://localhost:3001/api/health > /dev/null; then
-                echo "STAGING health OK"
-                exit 0
-                fi
-                echo "Waiting for STAGING... ($i/20)"
-                sleep 2
-            done
-            echo "STAGING health FAILED"
-            pm2 status || true
-            pm2 logs productos-staging --lines 50 || true
-            exit 1
+          pm2 status
+          pm2 describe productos-prod || true
 
       - name: Health check PRODUCTION (retry)
+        shell: bash
         run: |
-            for i in {1..20}; do
-                if curl -fsS http://localhost:3002/api/health > /dev/null; then
-                echo "STAGING health OK"
-                exit 0
-                fi
-                echo "Waiting for STAGING... ($i/20)"
-                sleep 2
-            done
-            echo "STAGING health FAILED"
-            pm2 status || true
-            pm2 logs productos-staging --lines 50 || true
-            exit 1
+          set -euo pipefail
+          for i in {1..20}; do
+            if curl -fsS http://localhost:3002/api/health > /dev/null; then
+              echo "PRODUCTION health OK"
+              exit 0
+            fi
+            echo "Waiting for PRODUCTION... ($i/20)"
+            sleep 2
+          done
+          echo "PRODUCTION health FAILED"
+          pm2 status || true
+          pm2 logs productos-prod --lines 80 || true
+          exit 1
