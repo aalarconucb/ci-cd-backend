@@ -94,10 +94,25 @@ jobs:
           pm2 save
           pm2 status
 
-      - name: Health check PRODUCTION
+      - name: Health check STAGING (retry)
         run: |
             for i in {1..20}; do
                 if curl -fsS http://localhost:3001/api/health > /dev/null; then
+                echo "STAGING health OK"
+                exit 0
+                fi
+                echo "Waiting for STAGING... ($i/20)"
+                sleep 2
+            done
+            echo "STAGING health FAILED"
+            pm2 status || true
+            pm2 logs productos-staging --lines 50 || true
+            exit 1
+
+      - name: Health check PRODUCTION (retry)
+        run: |
+            for i in {1..20}; do
+                if curl -fsS http://localhost:3002/api/health > /dev/null; then
                 echo "STAGING health OK"
                 exit 0
                 fi
